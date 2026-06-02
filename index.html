@@ -333,7 +333,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 
 </div><!-- /app -->
 
-<script src="https://js.stripe.com/v3/"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 // ═══════════════════════════════════════════════════════════════
@@ -346,13 +345,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 // STEP 1 — PASTE YOUR STRIPE PUBLISHABLE KEY HERE
 // Stripe Dashboard → Developers → API Keys → Publishable key
 // Starts with pk_live_...
-var STRIPE_KEY = 'pk_live_51TdoicBAI8CJ2OSlXBNtpDDcjkKzdW3E9cdyCWQ75uVFQOUjhl2tpCJLKRk1Z3sftiicNti8G2SLcBQr69t8RqaE00GtsyqvG9';
-
-// STEP 2 — STRIPE PRICE ID (do not change)
-var STRIPE_PRICE_ID = 'price_1TdorvBAI8CJ2OSlLWfxGAxg';
-
-// ─────────────────────────────────────────────
-// STEP 3 — SUPABASE KEYS (already filled in below)
 // Supabase config (anon/public key — safe to include in client-side code)
 var SUPABASE_URL      = 'https://gpvlahtspnhxdetmewom.supabase.co';
 var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdwdmxhaHRzcG5oeGRldG1ld29tIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzODYzNDUsImV4cCI6MjA5NTk2MjM0NX0.uynhlxCteXs8Zar1hhNl9UGBIqGewFdeFSEAkW2mV7Q';
@@ -450,20 +442,26 @@ var leagueMode = 'create';
 (function() {
   var params = new URLSearchParams(window.location.search);
   var payment = params.get('payment');
-  var name    = params.get('name')    ? decodeURIComponent(params.get('name'))    : '';
-  var email   = params.get('email')   ? decodeURIComponent(params.get('email'))   : '';
-  var lname   = params.get('lname')   ? decodeURIComponent(params.get('lname'))   : '';
-  var lcode   = params.get('lcode')   ? params.get('lcode').toUpperCase()         : '';
-  var lmode   = params.get('lmode')   || 'create';
   window.history.replaceState({}, '', window.location.pathname);
 
   if (payment === 'success') {
+    // Read user data back from sessionStorage (saved before Stripe redirect)
+    var name  = sessionStorage.getItem('wc_name')  || '';
+    var email = sessionStorage.getItem('wc_email') || '';
+    var lname = sessionStorage.getItem('wc_lname') || '';
+    var lcode = sessionStorage.getItem('wc_lcode') || '';
+    var lmode = sessionStorage.getItem('wc_lmode') || 'create';
+    sessionStorage.removeItem('wc_name');
+    sessionStorage.removeItem('wc_email');
+    sessionStorage.removeItem('wc_lname');
+    sessionStorage.removeItem('wc_lcode');
+    sessionStorage.removeItem('wc_lmode');
+
     showPage('success');
     if (name) {
       document.getElementById('success-msg').textContent =
         'Payment confirmed, ' + name + '. Your league code is below — share it with friends, then make your predictions.';
     }
-    // Create or join league in Supabase
     if (lmode === 'create') {
       createLeagueAndEntry(name, email, lname, function(code) {
         document.getElementById('league-code-big').textContent = code;
@@ -473,7 +471,7 @@ var leagueMode = 'create';
     } else {
       joinLeagueEntry(name, email, lcode, function(leagueName) {
         document.getElementById('success-msg').textContent =
-          'Payment confirmed, ' + name + '. You\'ve joined ' + leagueName + '. Make your predictions below.';
+          'Payment confirmed, ' + name + '. You've joined ' + leagueName + '. Make your predictions below.';
         currentUser = { name: name, league_code: lcode, league_name: leagueName };
       });
     }
@@ -615,29 +613,16 @@ function redirectToStripe(name, email, lname, lcode) {
   btn.disabled = true;
   btn.textContent = 'Redirecting to payment...';
 
-  var base = window.location.href.split('?')[0];
-  var successUrl = base + '?payment=success'
-    + '&name='  + encodeURIComponent(name)
-    + '&email=' + encodeURIComponent(email)
-    + '&lname=' + encodeURIComponent(lname || '')
-    + '&lcode=' + encodeURIComponent(lcode || '')
-    + '&lmode=' + leagueMode;
-  var cancelUrl = base + '?payment=cancelled';
+  // Save user data to sessionStorage before leaving — read back on return
+  sessionStorage.setItem('wc_name',  name);
+  sessionStorage.setItem('wc_email', email);
+  sessionStorage.setItem('wc_lname', lname || '');
+  sessionStorage.setItem('wc_lcode', lcode || '');
+  sessionStorage.setItem('wc_lmode', leagueMode);
 
-  var stripe = Stripe(STRIPE_KEY);
-  stripe.redirectToCheckout({
-    lineItems: [{ price: STRIPE_PRICE_ID, quantity: 1 }],
-    mode: 'payment',
-    customerEmail: email,
-    successUrl: successUrl,
-    cancelUrl: cancelUrl
-  }).then(function(result) {
-    if (result.error) {
-      showErr(result.error.message);
-      btn.disabled = false;
-      btn.innerHTML = '&#128274; Pay &#163;5 &amp; Enter';
-    }
-  });
+  // Redirect to Stripe Payment Link
+  window.location.href = 'https://buy.stripe.com/fZufZg9hp3O1atP9oBg3600'
+    + '?prefilled_email=' + encodeURIComponent(email);
 }
 
 // ─────────────────────────────────────────────
