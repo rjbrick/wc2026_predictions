@@ -442,47 +442,84 @@ var leagueMode = 'create';
 (function() {
   var params = new URLSearchParams(window.location.search);
   var payment = params.get('payment');
-  window.history.replaceState({}, '', window.location.pathname);
 
   if (payment === 'success') {
-    // Read user data back from sessionStorage (saved before Stripe redirect)
+    // Clean URL immediately
+    window.history.replaceState({}, '', window.location.pathname);
+
+    // Read user data from localStorage (saved before Stripe redirect)
     var name  = localStorage.getItem('wc_name')  || '';
     var email = localStorage.getItem('wc_email') || '';
     var lname = localStorage.getItem('wc_lname') || '';
     var lcode = localStorage.getItem('wc_lcode') || '';
     var lmode = localStorage.getItem('wc_lmode') || 'create';
+
+    // Set currentUser immediately — do NOT wait for Supabase
+    // Supabase write happens in the background silently
+    if (lmode === 'create') {
+      var code = generateCode();
+      currentUser = { name: name, email: email, league_code: code, league_name: lname };
+      localStorage.setItem('wc_user', JSON.stringify(currentUser));
+      // Write to Supabase in background — don't block the user
+      createLeagueAndEntry(name, email, lname, code, function(finalCode) {
+        currentUser.league_code = finalCode;
+        localStorage.setItem('wc_user', JSON.stringify(currentUser));
+        // Update display if already on main screen
+        var el = document.getElementById('hdr-league');
+        if (el) el.textContent = lname + ' · Code: ' + finalCode;
+        var codeBig = document.getElementById('league-code-big');
+        if (codeBig) codeBig.textContent = finalCode;
+      });
+    } else {
+      currentUser = { name: name, email: email, league_code: lcode, league_name: lname };
+      localStorage.setItem('wc_user', JSON.stringify(currentUser));
+      // Write to Supabase in background
+      joinLeagueEntry(name, email, lcode, function() {});
+    }
+
+    // Clean up pre-stripe localStorage keys
     localStorage.removeItem('wc_name');
     localStorage.removeItem('wc_email');
     localStorage.removeItem('wc_lname');
     localStorage.removeItem('wc_lcode');
     localStorage.removeItem('wc_lmode');
 
-    showPage('success');
-    if (name) {
-      document.getElementById('success-msg').textContent =
-        'Payment confirmed, ' + name + '. Your league code is below — share it with friends, then make your predictions.';
-    }
-    if (lmode === 'create') {
-      createLeagueAndEntry(name, email, lname, function(code) {
-        document.getElementById('league-code-big').textContent = code;
-        document.getElementById('league-code-display').style.display = 'block';
-        currentUser = { name: name, league_code: code, league_name: lname };
-        // Persist so the button can always read it
-        localStorage.setItem('wc_user', JSON.stringify(currentUser));
-      });
-    } else {
-      joinLeagueEntry(name, email, lcode, function(leagueName) {
-        document.getElementById('success-msg').textContent =
-          'Payment confirmed, ' + name + '. You have joined ' + leagueName + '. Make your predictions below.';
-        currentUser = { name: name, league_code: lcode, league_name: leagueName };
-        localStorage.setItem('wc_user', JSON.stringify(currentUser));
-      });
-    }
+    // Go straight to the app — no intermediate success page
+    showPage('main');
+    buildGroupFilter();
+    renderFixtures();
+    document.getElementById('hdr-name').textContent = name || 'Player';
+    document.getElementById('hdr-league').textContent =
+      (lname || 'My League') + ' · Code: ' + (lmode === 'create' ? 'Generating...' : lcode);
+    showTab('groups');
+    window.scrollTo(0, 0);
     return;
   }
+
   if (payment === 'cancelled') {
+    window.history.replaceState({}, '', window.location.pathname);
     showPage('cancelled');
+    return;
   }
+
+  // No payment param — check if returning user has stored session
+  var stored = localStorage.getItem('wc_user');
+  if (stored) {
+    try {
+      currentUser = JSON.parse(stored);
+      showPage('main');
+      buildGroupFilter();
+      renderFixtures();
+      document.getElementById('hdr-name').textContent = currentUser.name || 'Player';
+      document.getElementById('hdr-league').textContent =
+        (currentUser.league_name || 'My League') + ' · Code: ' + (currentUser.league_code || '');
+      showTab('groups');
+      return;
+    } catch(e) {}
+  }
+
+  // Default: show landing
+  showPage('landing');
 })();
 
 // ─────────────────────────────────────────────
@@ -496,10 +533,20 @@ function generateCode() {
   return code;
 }
 
-function createLeagueAndEntry(name, email, leagueName, callback) {
-  var code = generateCode();
+function createLeagueAndEntry(name, email, leagueName, code, callback) {
   sb.from('leagues').insert({ name: leagueName, code: code }).select().then(function(res) {
-    if (res.error) { console.error('League error:', res.error); return; }
+    if (res.error) {
+      // Code collision — generate new one and retry once
+      var newCode = generateCode();
+      sb.from('leagues').insert({ name: leagueName, code: newCode }).select().then(function(res2) {
+        if (res2.error) { console.error('League error:', res2.error); callback(code); return; }
+        var leagueId = res2.data[0].id;
+        sb.from('entries').insert({ name: name, email: email, league_id: leagueId, points: 0 }).then(function() {
+          callback(newCode);
+        });
+      });
+      return;
+    }
     var leagueId = res.data[0].id;
     sb.from('entries').insert({ name: name, email: email, league_id: leagueId, points: 0 }).then(function(res2) {
       if (res2.error) console.error('Entry error:', res2.error);
@@ -660,36 +707,20 @@ function redirectToStripe(name, email, lname, lcode) {
 // ─────────────────────────────────────────────
 // SUCCESS / CANCELLED BUTTONS
 // ─────────────────────────────────────────────
-document.getElementById('success-go-btn').onclick = function() {
-  // Read currentUser from localStorage if async Supabase hasn't finished yet
-  if (!currentUser || !currentUser.league_code) {
-    var stored = localStorage.getItem('wc_user');
-    if (stored) { try { currentUser = JSON.parse(stored); } catch(e) {} }
-  }
-  // If still loading, wait briefly then proceed anyway
-  if (!currentUser || !currentUser.league_code) {
-    var btn = document.getElementById('success-go-btn');
-    btn.textContent = 'Loading...';
-    btn.disabled = true;
-    setTimeout(goToMain, 1500);
-    return;
-  }
-  goToMain();
-};
+document.getElementById('success-go-btn').onclick = function() { goToMain(); };
 
 function goToMain() {
+  var stored = localStorage.getItem('wc_user');
+  if (stored) { try { currentUser = JSON.parse(stored); } catch(e) {} }
   showPage('main');
   buildGroupFilter();
   renderFixtures();
-  if (currentUser && currentUser.name) {
-    document.getElementById('hdr-name').textContent = currentUser.name;
-  }
-  if (currentUser && currentUser.league_code) {
-    document.getElementById('hdr-league').textContent =
-      (currentUser.league_name || 'My League') + ' · Code: ' + currentUser.league_code;
+  if (currentUser) {
+    document.getElementById('hdr-name').textContent = currentUser.name || 'Player';
+    document.getElementById('hdr-league').textContent = (currentUser.league_name||'My League') + ' · Code: ' + (currentUser.league_code||'');
   }
   showTab('groups');
-  window.scrollTo(0, 0);
+  window.scrollTo(0,0);
 }
 
 document.getElementById('cancelled-back-btn').onclick = function() {
