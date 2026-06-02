@@ -446,16 +446,16 @@ var leagueMode = 'create';
 
   if (payment === 'success') {
     // Read user data back from sessionStorage (saved before Stripe redirect)
-    var name  = sessionStorage.getItem('wc_name')  || '';
-    var email = sessionStorage.getItem('wc_email') || '';
-    var lname = sessionStorage.getItem('wc_lname') || '';
-    var lcode = sessionStorage.getItem('wc_lcode') || '';
-    var lmode = sessionStorage.getItem('wc_lmode') || 'create';
-    sessionStorage.removeItem('wc_name');
-    sessionStorage.removeItem('wc_email');
-    sessionStorage.removeItem('wc_lname');
-    sessionStorage.removeItem('wc_lcode');
-    sessionStorage.removeItem('wc_lmode');
+    var name  = localStorage.getItem('wc_name')  || '';
+    var email = localStorage.getItem('wc_email') || '';
+    var lname = localStorage.getItem('wc_lname') || '';
+    var lcode = localStorage.getItem('wc_lcode') || '';
+    var lmode = localStorage.getItem('wc_lmode') || 'create';
+    localStorage.removeItem('wc_name');
+    localStorage.removeItem('wc_email');
+    localStorage.removeItem('wc_lname');
+    localStorage.removeItem('wc_lcode');
+    localStorage.removeItem('wc_lmode');
 
     showPage('success');
     if (name) {
@@ -614,11 +614,11 @@ function redirectToStripe(name, email, lname, lcode) {
   btn.textContent = 'Redirecting to payment...';
 
   // Save user data to sessionStorage before leaving — read back on return
-  sessionStorage.setItem('wc_name',  name);
-  sessionStorage.setItem('wc_email', email);
-  sessionStorage.setItem('wc_lname', lname || '');
-  sessionStorage.setItem('wc_lcode', lcode || '');
-  sessionStorage.setItem('wc_lmode', leagueMode);
+  localStorage.setItem('wc_name',  name);
+  localStorage.setItem('wc_email', email);
+  localStorage.setItem('wc_lname', lname || '');
+  localStorage.setItem('wc_lcode', lcode || '');
+  localStorage.setItem('wc_lmode', leagueMode);
 
   // Redirect to Stripe Payment Link
   window.location.href = 'https://buy.stripe.com/fZufZg9hp3O1atP9oBg3600'
