@@ -333,6 +333,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 
 </div><!-- /app -->
 
+<script src="https://js.stripe.com/v3/"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 // ═══════════════════════════════════════════════════════════════
@@ -341,6 +342,17 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
 //  Supabase keys below are safe — anon/public only.
 // ═══════════════════════════════════════════════════════════════
 
+// ─────────────────────────────────────────────
+// STEP 1 — PASTE YOUR STRIPE PUBLISHABLE KEY HERE
+// Stripe Dashboard → Developers → API Keys → Publishable key
+// Starts with pk_live_...
+var STRIPE_KEY = 'pk_live_51TdoicBAI8CJ2OSlXBNtpDDcjkKzdW3E9cdyCWQ75uVFQOUjhl2tpCJLKRk1Z3sftiicNti8G2SLcBQr69t8RqaE00GtsyqvG9';
+
+// STEP 2 — STRIPE PRICE ID (do not change)
+var STRIPE_PRICE_ID = 'price_1TdorvBAI8CJ2OSlLWfxGAxg';
+
+// ─────────────────────────────────────────────
+// STEP 3 — SUPABASE KEYS (already filled in below)
 // Supabase config (anon/public key — safe to include in client-side code)
 var SUPABASE_URL      = 'https://gpvlahtspnhxdetmewom.supabase.co';
 var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdwdmxhaHRzcG5oeGRldG1ld29tIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzODYzNDUsImV4cCI6MjA5NTk2MjM0NX0.uynhlxCteXs8Zar1hhNl9UGBIqGewFdeFSEAkW2mV7Q';
@@ -603,31 +615,28 @@ function redirectToStripe(name, email, lname, lcode) {
   btn.disabled = true;
   btn.textContent = 'Redirecting to payment...';
 
-  fetch('/.netlify/functions/create-checkout', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      name:  name,
-      email: email,
-      lname: lname,
-      lcode: lcode,
-      lmode: leagueMode
-    })
-  })
-  .then(function(res) { return res.json(); })
-  .then(function(data) {
-    if (data.error) {
-      showErr('Payment error: ' + data.error);
+  var base = window.location.href.split('?')[0];
+  var successUrl = base + '?payment=success'
+    + '&name='  + encodeURIComponent(name)
+    + '&email=' + encodeURIComponent(email)
+    + '&lname=' + encodeURIComponent(lname || '')
+    + '&lcode=' + encodeURIComponent(lcode || '')
+    + '&lmode=' + leagueMode;
+  var cancelUrl = base + '?payment=cancelled';
+
+  var stripe = Stripe(STRIPE_KEY);
+  stripe.redirectToCheckout({
+    lineItems: [{ price: STRIPE_PRICE_ID, quantity: 1 }],
+    mode: 'payment',
+    customerEmail: email,
+    successUrl: successUrl,
+    cancelUrl: cancelUrl
+  }).then(function(result) {
+    if (result.error) {
+      showErr(result.error.message);
       btn.disabled = false;
       btn.innerHTML = '&#128274; Pay &#163;5 &amp; Enter';
-      return;
     }
-    window.location.href = data.url;
-  })
-  .catch(function() {
-    showErr('Could not connect to payment service. Please try again.');
-    btn.disabled = false;
-    btn.innerHTML = '&#128274; Pay &#163;5 &amp; Enter';
   });
 }
 
