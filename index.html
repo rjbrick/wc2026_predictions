@@ -439,88 +439,7 @@ var leagueMode = 'create';
 // ─────────────────────────────────────────────
 // PAGE ROUTING — check URL params on load
 // ─────────────────────────────────────────────
-(function() {
-  var params = new URLSearchParams(window.location.search);
-  var payment = params.get('payment');
 
-  if (payment === 'success') {
-    // Clean URL immediately
-    window.history.replaceState({}, '', window.location.pathname);
-
-    // Read user data from localStorage (saved before Stripe redirect)
-    var name  = localStorage.getItem('wc_name')  || '';
-    var email = localStorage.getItem('wc_email') || '';
-    var lname = localStorage.getItem('wc_lname') || '';
-    var lcode = localStorage.getItem('wc_lcode') || '';
-    var lmode = localStorage.getItem('wc_lmode') || 'create';
-
-    // Set currentUser immediately — do NOT wait for Supabase
-    // Supabase write happens in the background silently
-    if (lmode === 'create') {
-      var code = generateCode();
-      currentUser = { name: name, email: email, league_code: code, league_name: lname };
-      localStorage.setItem('wc_user', JSON.stringify(currentUser));
-      // Write to Supabase in background — don't block the user
-      createLeagueAndEntry(name, email, lname, code, function(finalCode) {
-        currentUser.league_code = finalCode;
-        localStorage.setItem('wc_user', JSON.stringify(currentUser));
-        // Update display if already on main screen
-        var el = document.getElementById('hdr-league');
-        if (el) el.textContent = lname + ' · Code: ' + finalCode;
-        var codeBig = document.getElementById('league-code-big');
-        if (codeBig) codeBig.textContent = finalCode;
-      });
-    } else {
-      currentUser = { name: name, email: email, league_code: lcode, league_name: lname };
-      localStorage.setItem('wc_user', JSON.stringify(currentUser));
-      // Write to Supabase in background
-      joinLeagueEntry(name, email, lcode, function() {});
-    }
-
-    // Clean up pre-stripe localStorage keys
-    localStorage.removeItem('wc_name');
-    localStorage.removeItem('wc_email');
-    localStorage.removeItem('wc_lname');
-    localStorage.removeItem('wc_lcode');
-    localStorage.removeItem('wc_lmode');
-
-    // Go straight to the app — no intermediate success page
-    showPage('main');
-    buildGroupFilter();
-    renderFixtures();
-    document.getElementById('hdr-name').textContent = name || 'Player';
-    document.getElementById('hdr-league').textContent =
-      (lname || 'My League') + ' · Code: ' + (lmode === 'create' ? 'Generating...' : lcode);
-    showTab('groups');
-    window.scrollTo(0, 0);
-    return;
-  }
-
-  if (payment === 'cancelled') {
-    window.history.replaceState({}, '', window.location.pathname);
-    showPage('cancelled');
-    return;
-  }
-
-  // No payment param — check if returning user has stored session
-  var stored = localStorage.getItem('wc_user');
-  if (stored) {
-    try {
-      currentUser = JSON.parse(stored);
-      showPage('main');
-      buildGroupFilter();
-      renderFixtures();
-      document.getElementById('hdr-name').textContent = currentUser.name || 'Player';
-      document.getElementById('hdr-league').textContent =
-        (currentUser.league_name || 'My League') + ' · Code: ' + (currentUser.league_code || '');
-      showTab('groups');
-      return;
-    } catch(e) {}
-  }
-
-  // Default: show landing
-  showPage('landing');
-})();
 
 // ─────────────────────────────────────────────
 // SUPABASE — create league + entry
@@ -865,6 +784,90 @@ document.getElementById('save-btn').onclick = function() {
 };
 
 // Routing is handled by the IIFE above
+
+// ── ROUTING (runs last, after all functions defined) ──
+(function() {
+  var params = new URLSearchParams(window.location.search);
+  var payment = params.get('payment');
+
+  if (payment === 'success') {
+    // Clean URL immediately
+    window.history.replaceState({}, '', window.location.pathname);
+
+    // Read user data from localStorage (saved before Stripe redirect)
+    var name  = localStorage.getItem('wc_name')  || '';
+    var email = localStorage.getItem('wc_email') || '';
+    var lname = localStorage.getItem('wc_lname') || '';
+    var lcode = localStorage.getItem('wc_lcode') || '';
+    var lmode = localStorage.getItem('wc_lmode') || 'create';
+
+    // Set currentUser immediately — do NOT wait for Supabase
+    // Supabase write happens in the background silently
+    if (lmode === 'create') {
+      var code = generateCode();
+      currentUser = { name: name, email: email, league_code: code, league_name: lname };
+      localStorage.setItem('wc_user', JSON.stringify(currentUser));
+      // Write to Supabase in background — don't block the user
+      createLeagueAndEntry(name, email, lname, code, function(finalCode) {
+        currentUser.league_code = finalCode;
+        localStorage.setItem('wc_user', JSON.stringify(currentUser));
+        // Update display if already on main screen
+        var el = document.getElementById('hdr-league');
+        if (el) el.textContent = lname + ' · Code: ' + finalCode;
+        var codeBig = document.getElementById('league-code-big');
+        if (codeBig) codeBig.textContent = finalCode;
+      });
+    } else {
+      currentUser = { name: name, email: email, league_code: lcode, league_name: lname };
+      localStorage.setItem('wc_user', JSON.stringify(currentUser));
+      // Write to Supabase in background
+      joinLeagueEntry(name, email, lcode, function() {});
+    }
+
+    // Clean up pre-stripe localStorage keys
+    localStorage.removeItem('wc_name');
+    localStorage.removeItem('wc_email');
+    localStorage.removeItem('wc_lname');
+    localStorage.removeItem('wc_lcode');
+    localStorage.removeItem('wc_lmode');
+
+    // Go straight to the app — no intermediate success page
+    showPage('main');
+    buildGroupFilter();
+    renderFixtures();
+    document.getElementById('hdr-name').textContent = name || 'Player';
+    document.getElementById('hdr-league').textContent =
+      (lname || 'My League') + ' · Code: ' + (lmode === 'create' ? 'Generating...' : lcode);
+    showTab('groups');
+    window.scrollTo(0, 0);
+    return;
+  }
+
+  if (payment === 'cancelled') {
+    window.history.replaceState({}, '', window.location.pathname);
+    showPage('cancelled');
+    return;
+  }
+
+  // No payment param — check if returning user has stored session
+  var stored = localStorage.getItem('wc_user');
+  if (stored) {
+    try {
+      currentUser = JSON.parse(stored);
+      showPage('main');
+      buildGroupFilter();
+      renderFixtures();
+      document.getElementById('hdr-name').textContent = currentUser.name || 'Player';
+      document.getElementById('hdr-league').textContent =
+        (currentUser.league_name || 'My League') + ' · Code: ' + (currentUser.league_code || '');
+      showTab('groups');
+      return;
+    } catch(e) {}
+  }
+
+  // Default: show landing
+  showPage('landing');
+})();
 </script>
 </body>
 </html>
