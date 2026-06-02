@@ -190,19 +190,19 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
           <label>League code</label>
           <input type="text" id="inp-league-code" placeholder="e.g. ABC123" maxlength="6" style="text-transform:uppercase;letter-spacing:3px;font-weight:700;">
         </div>
-        <div class="info-box">&#128101; Enter the 6-character code your league organiser shared with you.</div>
+        <div class="info-box">&#127881; Joining is free — enter the code your league organiser shared with you and you're in instantly.</div>
       </div>
 
       <div class="feats">
         <div class="feat"><div class="feat-dot">&#10003;</div>Predict all 48 group games</div>
         <div class="feat"><div class="feat-dot">&#10003;</div>Full knockout bracket</div>
         <div class="feat"><div class="feat-dot">&#10003;</div>Private mini-league</div>
-        <div class="feat"><div class="feat-dot">&#10003;</div>&#163;5 one-time entry</div>
+        <div class="feat"><div class="feat-dot">&#10003;</div>Free to join a league</div>
       </div>
 
-      <button class="primary-btn" id="join-btn">&#128274; Pay &#163;5 &amp; Enter</button>
+      <button class="primary-btn" id="join-btn" id="join-btn">&#128274; Pay &#163;5 &amp; Create League</button>
       <div class="err" id="err-msg"></div>
-      <p class="stripe-note">&#128274; Secured by Stripe &middot; One-time payment</p>
+      <p class="stripe-note" id="stripe-note-el">&#128274; Secured by Stripe &middot; One-time payment for league creator</p>
     </div>
   </div>
 </div>
@@ -486,7 +486,8 @@ var leagueMode = 'create';
 // SUPABASE — create league + entry
 // ─────────────────────────────────────────────
 function generateCode() {
-  var chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  // Alphanumeric, excluding easily confused characters (0/O, 1/I/L)
+  var chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
   var code = '';
   for (var i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
   return code;
@@ -572,6 +573,14 @@ function switchLeagueTab(mode) {
   document.getElementById('tt-join').classList.toggle('on', mode === 'join');
   document.getElementById('panel-create').style.display = mode === 'create' ? 'block' : 'none';
   document.getElementById('panel-join').style.display   = mode === 'join'   ? 'block' : 'none';
+  var btn = document.getElementById('join-btn');
+  if (mode === 'create') {
+    btn.innerHTML = '&#128274; Pay &#163;5 &amp; Create League';
+  } else {
+    btn.innerHTML = '&#127881; Join League Free';
+  }
+  // Show/hide Stripe note
+  document.getElementById('stripe-note-el').style.display = mode === 'create' ? 'block' : 'none';
 }
 
 // ─────────────────────────────────────────────
@@ -586,25 +595,45 @@ document.getElementById('join-btn').onclick = function() {
 
   if (!name)  { showErr('Please enter your name.'); document.getElementById('inp-name').focus(); return; }
   if (!email || email.indexOf('@') < 0) { showErr('Please enter a valid email.'); document.getElementById('inp-email').focus(); return; }
-  if (leagueMode === 'create' && !lname) { showErr('Please enter a league name.'); document.getElementById('inp-league-name').focus(); return; }
-  if (leagueMode === 'join'   && lcode.length < 6) { showErr('Please enter a 6-character league code.'); document.getElementById('inp-league-code').focus(); return; }
 
-  // If joining, verify code exists first
-  if (leagueMode === 'join') {
+  if (leagueMode === 'create') {
+    // Creator pays £5 — validate league name then go to Stripe
+    if (!lname) { showErr('Please enter a league name.'); document.getElementById('inp-league-name').focus(); return; }
+    redirectToStripe(name, email, lname, '');
+
+  } else {
+    // Joiner is FREE — verify code then go straight in
+    if (lcode.length < 6) { showErr('Please enter the 6-character league code.'); document.getElementById('inp-league-code').focus(); return; }
     var btn = document.getElementById('join-btn');
     btn.disabled = true;
     btn.textContent = 'Checking code...';
-    sb.from('leagues').select('id').eq('code', lcode).single().then(function(res) {
+    sb.from('leagues').select('id, name').eq('code', lcode).single().then(function(res) {
       if (res.error) {
-        showErr('League code "' + lcode + '" not found. Please check with your organiser.');
+        showErr('Code "' + lcode + '" not found. Check with your organiser.');
         btn.disabled = false;
-        btn.innerHTML = '&#128274; Pay &#163;5 &amp; Enter';
+        btn.innerHTML = '&#127881; Join League Free';
         return;
       }
-      redirectToStripe(name, email, lname, lcode);
+      var leagueId   = res.data.id;
+      var leagueName = res.data.name;
+      // Create entry directly — no payment needed
+      sb.from('entries').insert({ name: name, email: email, league_id: leagueId, points: 0 }).then(function(res2) {
+        if (res2.error) {
+          showErr('Could not join league. Please try again.');
+          btn.disabled = false;
+          btn.innerHTML = '&#127881; Join League Free';
+          return;
+        }
+        // Go straight to the app
+        currentUser = { name: name, league_code: lcode, league_name: leagueName };
+        showPage('main');
+        buildGroupFilter();
+        renderFixtures();
+        document.getElementById('hdr-name').textContent = name;
+        document.getElementById('hdr-league').textContent = leagueName + ' · Code: ' + lcode;
+        window.scrollTo(0, 0);
+      });
     });
-  } else {
-    redirectToStripe(name, email, lname, lcode);
   }
 };
 
