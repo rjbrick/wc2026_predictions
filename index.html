@@ -467,12 +467,15 @@ var leagueMode = 'create';
         document.getElementById('league-code-big').textContent = code;
         document.getElementById('league-code-display').style.display = 'block';
         currentUser = { name: name, league_code: code, league_name: lname };
+        // Persist so the button can always read it
+        localStorage.setItem('wc_user', JSON.stringify(currentUser));
       });
     } else {
       joinLeagueEntry(name, email, lcode, function(leagueName) {
         document.getElementById('success-msg').textContent =
           'Payment confirmed, ' + name + '. You have joined ' + leagueName + '. Make your predictions below.';
         currentUser = { name: name, league_code: lcode, league_name: leagueName };
+        localStorage.setItem('wc_user', JSON.stringify(currentUser));
       });
     }
     return;
@@ -658,15 +661,36 @@ function redirectToStripe(name, email, lname, lcode) {
 // SUCCESS / CANCELLED BUTTONS
 // ─────────────────────────────────────────────
 document.getElementById('success-go-btn').onclick = function() {
+  // Read currentUser from localStorage if async Supabase hasn't finished yet
+  if (!currentUser || !currentUser.league_code) {
+    var stored = localStorage.getItem('wc_user');
+    if (stored) { try { currentUser = JSON.parse(stored); } catch(e) {} }
+  }
+  // If still loading, wait briefly then proceed anyway
+  if (!currentUser || !currentUser.league_code) {
+    var btn = document.getElementById('success-go-btn');
+    btn.textContent = 'Loading...';
+    btn.disabled = true;
+    setTimeout(goToMain, 1500);
+    return;
+  }
+  goToMain();
+};
+
+function goToMain() {
   showPage('main');
   buildGroupFilter();
   renderFixtures();
-  if (currentUser && currentUser.league_code) {
+  if (currentUser && currentUser.name) {
     document.getElementById('hdr-name').textContent = currentUser.name;
-    document.getElementById('hdr-league').textContent = currentUser.league_name + ' \u00b7 Code: ' + currentUser.league_code;
   }
+  if (currentUser && currentUser.league_code) {
+    document.getElementById('hdr-league').textContent =
+      (currentUser.league_name || 'My League') + ' · Code: ' + currentUser.league_code;
+  }
+  showTab('groups');
   window.scrollTo(0, 0);
-};
+}
 
 document.getElementById('cancelled-back-btn').onclick = function() {
   showPage('landing');
