@@ -471,7 +471,7 @@ var leagueMode = 'create';
     } else {
       joinLeagueEntry(name, email, lcode, function(leagueName) {
         document.getElementById('success-msg').textContent =
-          'Payment confirmed, ' + name + '. You've joined ' + leagueName + '. Make your predictions below.';
+          'Payment confirmed, ' + name + '. You have joined ' + leagueName + '. Make your predictions below.';
         currentUser = { name: name, league_code: lcode, league_name: leagueName };
       });
     }
